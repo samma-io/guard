@@ -1,0 +1,7 @@
+{
+  "rules": [
+    { "id": "cluster-internal", "kind": "cidr", "match": "10.0.0.0/8", "action": "allow", "reason": "own ranges are never blocked by detection" },
+    { "id": "wp-login", "kind": "path", "match": "/wp-login.php", "action": "block", "reason": "no WordPress here" },
+    { "id": "env-files", "kind": "path", "match": "/.env", "action": "block", "reason": "secret file probing" }
+  ]
+}

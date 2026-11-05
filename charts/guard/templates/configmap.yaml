@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-baseline
+  labels:
+    {{- include "guard.labels" . | nindent 4 }}
+data:
+  baseline.json: |
+    {{- dict "rules" .Values.baseline | toPrettyJson | nindent 4 }}

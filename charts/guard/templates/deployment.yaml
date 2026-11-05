@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "guard.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "guard.selector" . | nindent 6 }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "guard.selector" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "guard.selector" . | nindent 14 }}
+      containers:
+        - name: guard
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8081
+            - name: metrics
+              containerPort: 9090
+          env:
+            - name: BASELINE_FILE
+              value: /etc/guard/baseline.json
+            - name: NATS_ENABLED
+              value: {{ .Values.nats.enabled | quote }}
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+            - name: NATS_KV_BUCKET
+              value: {{ .Values.nats.bucket | quote }}
+            - name: NATS_AUDIT_SUBJECT
+              value: {{ .Values.nats.auditSubject | quote }}
+            {{- if .Values.nats.credsSecret }}
+            - name: NATS_CREDS
+              value: /etc/guard-nats/guard.creds
+            {{- end }}
+            - name: TRUSTED_PROXIES
+              value: {{ join "," .Values.trustedProxies | quote }}
+            - name: MAX_TTL
+              value: {{ .Values.limits.maxTTL | quote }}
+            - name: MIN_PREFIX_V4
+              value: {{ .Values.limits.minPrefixV4 | quote }}
+            - name: MIN_PREFIX_V6
+              value: {{ .Values.limits.minPrefixV6 | quote }}
+            - name: MAX_DYNAMIC_RULES
+              value: {{ .Values.limits.maxDynamicRules | quote }}
+            - name: AUDIT_WINDOW
+              value: {{ .Values.auditWindow | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          startupProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: baseline
+              mountPath: /etc/guard
+              readOnly: true
+            {{- if .Values.nats.credsSecret }}
+            - name: nats-creds
+              mountPath: /etc/guard-nats
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: baseline
+          configMap:
+            name: {{ .Release.Name }}-baseline
+        {{- if .Values.nats.credsSecret }}
+        - name: nats-creds
+          secret:
+            secretName: {{ .Values.nats.credsSecret }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,33 @@
+{{- if .Values.traefik.createMiddleware }}
+# Attach to an ingress with:
+#   traefik.ingress.kubernetes.io/router.middlewares: {{ .Values.traefik.namespace }}-{{ .Values.traefik.middlewareName }}@kubernetescrd
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Values.traefik.middlewareName }}
+  namespace: {{ .Values.traefik.namespace }}
+  labels:
+    {{- include "guard.labels" . | nindent 4 }}
+spec:
+  forwardAuth:
+    address: http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:8081/check
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-Guard-Decision
+{{- end }}
+{{- if .Values.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "guard.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "guard.selector" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      interval: 30s
+{{- end }}

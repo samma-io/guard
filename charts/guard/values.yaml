@@ -1,0 +1,69 @@
+image:
+  repository: ghcr.io/samma-io/guard
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+
+# Where Traefik runs. Used for the NetworkPolicy and the Middleware.
+traefik:
+  namespace: traefik
+  # Create the Middleware CRD that ingresses reference.
+  createMiddleware: true
+  middlewareName: guard
+
+nats:
+  enabled: true
+  url: nats://nats.nats.svc.cluster.local:4222
+  bucket: samma-guard-rules
+  auditSubject: samma-io.guard.audit
+  # Name of a Secret holding a NATS .creds file under the key "guard.creds".
+  # Leave empty for no auth (lab only).
+  credsSecret: ""
+
+# Proxies in front of Traefik whose IPs must be skipped when reading
+# X-Forwarded-For, e.g. your load balancer ranges.
+trustedProxies: []
+
+limits:
+  maxTTL: 168h       # longest lifetime of a dynamic rule
+  minPrefixV4: 16    # broadest IPv4 CIDR detection may block
+  minPrefixV6: 32
+  maxDynamicRules: 100000
+
+auditWindow: 60s
+logLevel: info
+
+# Reviewed rules shipped with the release. Allow rules can only live here.
+baseline:
+  - id: cluster-internal
+    kind: cidr
+    match: 10.0.0.0/8
+    action: allow
+    reason: own ranges are never blocked by detection
+  - id: wp-login
+    kind: path
+    match: /wp-login.php
+    action: block
+    reason: no WordPress here
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podDisruptionBudget:
+  minAvailable: 2
+
+networkPolicy:
+  enabled: true
+  # Namespace allowed to scrape :9090/metrics.
+  metricsNamespace: monitoring
+
+serviceMonitor:
+  enabled: false
+
+nodeSelector: {}
+tolerations: []
